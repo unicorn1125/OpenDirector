@@ -24,6 +24,12 @@ When work exposes a consequential risk or a recurring problem, add a lesson or u
 - **Lesson:** Commits `28d61dce` and `0a5630ac` each recorded the same generation test failing on the baseline. That historical record does not establish whether the test still fails today.
 - **Check:** Record the versions and results used in the comparison. Link an existing issue or create one when appropriate. Report the check as failed; a baseline failure is not a pass.
 
+## Shared browser lanes are not isolated by a fresh page alone
+
+- **Trigger:** Adding a browser script to the nightly extended, production, or perf lane, or changing model setup, session leases, or preview serving.
+- **Lesson:** Nightly runs many scripts against one creation server. The first-run welcome covers the canvas until every model kind exists, so a script that does not dismiss it fails when it is the first click on a fresh server. A script that opens whichever project sorts first can hit a lease still held by an earlier script. Fixture scripts that read `CREATION_WEB_URL` stay on the regular dev server unless the lane overrides it. `vite preview` does not serve `/src` or `/tests` modules.
+- **Check:** Dismiss `opendirector.modelSetup.v1` before the first navigation, and open a project the script itself created when the server is already populated. Point assistant-fixture scripts at their own web URL, and keep `/src` or `/tests` imports out of the production lane. `npm run check:browser-manifest` checks the dismissal, the fixture URL, and those imports.
+
 ## Provider result URLs are an independent trust boundary
 
 - **Trigger:** Accepting a cross-origin result URL from a configured model service.

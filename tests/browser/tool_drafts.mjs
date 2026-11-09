@@ -239,6 +239,12 @@ try {
       await route.abort("failed");
     } else await route.continue();
   });
+  // The continued draft keeps selection mode and no mask, which disables
+  // generate. Mark mode is the whole-image edit this retry is asserting.
+  await page
+    .locator(".iae-segment")
+    .getByRole("button", { name: "标记", exact: true })
+    .click();
   await page.locator(".iae-generate").click();
   await until(async () => lookupLost, Boolean, "lost task lookup");
   await page.reload();
@@ -252,6 +258,10 @@ try {
   );
   await open(output.canvasItemId);
   await prompt().fill("New edits must not replace the unknown request");
+  await page
+    .locator(".iae-segment")
+    .getByRole("button", { name: "标记", exact: true })
+    .click();
   await page.locator(".iae-generate").click();
   await until(
     async () => sent.length,

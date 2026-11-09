@@ -159,7 +159,8 @@ export function ChatReferenceEditor({
     choosing = useRef(false),
     alive = useRef(true);
   const preparation = useRef<AbortController | null>(null),
-    dismissed = useRef<number | null>(null);
+    dismissed = useRef<number | null>(null),
+    explicitPicker = useRef(false);
   const [range, setRange] = useState<Caret | null>(null),
     rangeRef = useRef(range);
   rangeRef.current = range;
@@ -181,6 +182,7 @@ export function ChatReferenceEditor({
     (root.current && selection(root.current)) || saved.current;
   function close() {
     preparation.current?.abort();
+    explicitPicker.current = false;
     dismissed.current = rangeRef.current?.start ?? null;
     rangeRef.current = null;
     setRange(null);
@@ -390,6 +392,9 @@ export function ChatReferenceEditor({
     if (referencesDisabled) return;
     const next = mentionRange(editingText(current.current), at.start, at.end);
     if (!next) {
+      // The connected-reference button opens the picker with no "@" in the
+      // text. A focus selectionchange must not immediately close that picker.
+      if (explicitPicker.current) return;
       dismissed.current = null;
       rangeRef.current = null;
       setRange(null);
@@ -609,6 +614,7 @@ export function ChatReferenceEditor({
         focus();
       } else {
         dismissed.current = null;
+        explicitPicker.current = true;
         open(caret());
         focus();
       }
@@ -629,6 +635,15 @@ export function ChatReferenceEditor({
             ...snapshot,
             content: currentReferences(snapshot.content, assets),
           }));
+      } else if (
+        value.filter((part) => part.type === "text").map((part) => part.text).join("") ===
+        current.current.filter((part) => part.type === "text").map((part) => part.text).join("")
+      ) {
+        // A chip removal arrives as a new value after the canvas command.
+        // Keep that previous content so Ctrl+Z in the prompt restores it.
+        past.current.push({ content: current.current, caret: saved.current });
+        if (past.current.length > 100) past.current.shift();
+        future.current = [];
       } else {
         past.current = [];
         future.current = [];

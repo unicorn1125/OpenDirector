@@ -11,6 +11,8 @@ const browser = await chromium.launch({
   args: ["--no-sandbox"],
 });
 const page = await browser.newPage({ locale: "zh-CN", viewport: { width: 1600, height: 1000 } });
+// Skip the first-run model setup welcome; it covers the canvas.
+await page.addInitScript(() => localStorage.setItem("opendirector.modelSetup.v1", "dismissed"));
 const errors = [];
 page.on("pageerror", (error) => errors.push(error.message));
 page.setDefaultTimeout(15000);

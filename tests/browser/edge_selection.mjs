@@ -11,6 +11,8 @@ const browser = await chromium.launch({
     : {}),
 });
 const page = await browser.newPage({ locale: "zh-CN", viewport: { width: 1800, height: 1100 } });
+// Skip the first-run model setup welcome; it covers the canvas.
+await page.addInitScript(() => localStorage.setItem("opendirector.modelSetup.v1", "dismissed"));
 page.setDefaultTimeout(15000);
 const errors = [];
 page.on("pageerror", (error) => errors.push(error.message));
@@ -188,8 +190,9 @@ try {
     await page.mouse.move(current.x, current.y);
     await del.waitFor();
     const bounds = await del.boundingBox();
+    // The control is 18 CSS pixels at every zoom (foreignObject is 18 / zoom).
     assert.ok(
-      Math.abs(bounds.width - 26) < 0.6 && Math.abs(bounds.height - 26) < 0.6,
+      Math.abs(bounds.width - 18) < 0.6 && Math.abs(bounds.height - 18) < 0.6,
       JSON.stringify(bounds),
     );
   }

@@ -32,7 +32,7 @@ try {
     true,
   );
   let status = "needs_configuration";
-  await page.route(/\/assistant\/runtimes$/, (route) =>
+  await page.route(/\/assistant\/runtimes(?:\?.*)?$/, (route) =>
     route.fulfill({
       json: [
         {
@@ -57,7 +57,21 @@ try {
       ],
     }),
   );
-  await page.route(/\/assistant\/runtimes\/jiuwenswarm\/models$/, (route) =>
+  await page.route(/\/assistant\/runtimes\/jiuwenswarm\/status(?:\?.*)?$/, (route) =>
+    route.fulfill({
+      json: {
+        id: "jiuwenswarm",
+        label: "JiuwenSwarm",
+        group: "harness",
+        modelSource: "cli",
+        available: true,
+        status,
+        modelOverride: true,
+        supportsSkills: true,
+      },
+    }),
+  );
+  await page.route(/\/assistant\/runtimes\/jiuwenswarm\/models(?:\?.*)?$/, (route) =>
     route.fulfill({
       json: [
         {

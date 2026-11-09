@@ -66,9 +66,34 @@ page.on("request", (r) => {
 });
 const saved = () => page.getByText("已保存到本机", { exact: true }).waitFor();
 try {
+  // A shared nightly server already has projects leased by earlier scripts.
+  // Pin a project this page owns. An empty server still proves the legacy
+  // directory is ignored and the default name is suffixed.
+  let ownProjectId = null;
+  if (!initiallyEmpty) {
+    ownProjectId = crypto.randomUUID();
+    await api(`/creation/projects/${ownProjectId}/commands`, {
+      type: "project.create",
+      projectId: ownProjectId,
+      commandId: crypto.randomUUID(),
+      payload: { name: "Default entry host " + ownProjectId.slice(0, 8) },
+    });
+  }
   await page.addInitScript(
-    (id) => localStorage.setItem("opendirector.lastFilesystemProject", id),
-    old.id,
+    ({ legacyId, ownProjectId }) => {
+      localStorage.setItem("opendirector.lastFilesystemProject", legacyId);
+      // Only the first load is pinned. Later navigations keep the project the
+      // app itself recorded, including the one created in this check.
+      if (
+        ownProjectId &&
+        !localStorage.getItem("opendirector.lastUnifiedFilesystemProject")
+      )
+        localStorage.setItem(
+          "opendirector.lastUnifiedFilesystemProject",
+          ownProjectId,
+        );
+    },
+    { legacyId: old.id, ownProjectId },
   );
   await page.goto(base + "/");
   await saved();
@@ -108,23 +133,24 @@ try {
     await page.getByRole("menuitem", { name: old.name, exact: true }).count(),
     0,
   );
-  await page
-    .getByRole("menuitem", { name: "新建画布项目", exact: true })
-    .click();
   const name = "Default entry " + crypto.randomUUID().slice(0, 8);
-  await page.getByRole("textbox", { name: "项目名称", exact: true }).fill(name);
+  // New canvas projects are created immediately, then the title is edited.
   const created = page.waitForResponse(
     (r) =>
       r.url().endsWith("/commands") &&
       r.request().postDataJSON()?.type === "project.create",
   );
-  await page.getByRole("button", { name: "创建项目", exact: true }).click();
+  await page
+    .getByRole("menuitem", { name: "新建画布项目", exact: true })
+    .click();
   const response = await created;
   assert.equal((await response.json()).status, "applied");
   const id = response.request().postDataJSON().projectId;
-  await page
-    .getByRole("dialog", { name: "新建画布项目", exact: true })
-    .waitFor({ state: "hidden" });
+  await saved();
+  const createdName = page.getByRole("textbox", { name: "项目名称", exact: true });
+  await createdName.waitFor();
+  await createdName.fill(name);
+  await createdName.press("Enter");
   await saved();
   await page.getByRole("button", { name: name, exact: true }).click();
   await page
@@ -134,6 +160,9 @@ try {
     .getByRole("textbox", { name: "项目名称", exact: true })
     .press("Enter");
   await saved();
+  // A successful rename returns focus to the title button, and the keyup can
+  // reopen the editor. Escape closes that second edit without changing the name.
+  await page.keyboard.press("Escape");
   await page
     .getByRole("button", { name: name + " renamed", exact: true })
     .waitFor();
@@ -159,7 +188,9 @@ try {
     .getByRole("button", { name: name + " renamed", exact: true })
     .waitFor();
   await page.getByRole("button", { name: "与 AI 对话", exact: true }).click();
-  await page.getByText(/助手对话尚未接入。请使用画布节点/).waitFor();
+  const message = page.getByRole("textbox", { name: "消息内容", exact: true });
+  await message.waitFor();
+  assert.equal((await message.innerText()).replace(/\u200b/g, "").trim(), "");
   assert.equal(
     await page
       .getByRole("button", { name: "发送消息", exact: true })

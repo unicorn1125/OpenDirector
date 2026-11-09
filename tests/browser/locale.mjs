@@ -25,6 +25,8 @@ assert.ok(response.ok, `${response.status}: ${await response.text()}`);
 const browser = await launchBrowser();
 try {
   const page = await browser.newPage({ locale: "en-US" });
+  // Skip the first-run model setup welcome; it covers the canvas.
+  await page.addInitScript(() => localStorage.setItem("opendirector.modelSetup.v1", "dismissed"));
   await page.goto(`${base}/ai-tool/ai-canvas/${projectId}?creation=unified`);
   await page
     .getByText("Saved on this device", { exact: true })

@@ -13,6 +13,8 @@ const browser = await chromium.launch({
   args: ["--no-sandbox"],
 });
 const page = await browser.newPage({ locale: "zh-CN", viewport: { width: 1500, height: 1000 } });
+// Skip the first-run model setup welcome; it covers the canvas.
+await page.addInitScript(() => localStorage.setItem("opendirector.modelSetup.v1", "dismissed"));
 page.setDefaultTimeout(20000);
 const errors = [];
 page.on("pageerror", (error) => errors.push(error.message));
@@ -149,8 +151,11 @@ try {
     const client = (
       await import("/src/backend/creationClient.ts")
     ).creationClient(id);
+    const { workspaceProjection } = await import("/src/backend/workspace.ts");
+    const projection = workspaceProjection(id);
     const batch = client.batch.bind(client),
-      view = client.view.bind(client);
+      view = client.view.bind(client),
+      save = projection.save.bind(projection);
     let release;
     const gate = new Promise((resolve) => {
       release = resolve;
@@ -162,13 +167,22 @@ try {
       restore: () => {
         client.batch = batch;
         client.view = view;
+        projection.save = save;
       },
+    };
+    // Opening history flushes through projection.save. A clean canvas never
+    // reaches batch, so hold the flush the dialog actually awaits.
+    projection.save = async (...args) => {
+      await gate;
+      try {
+        return await save(...args);
+      } finally {
+        window.historyReadCheck.finished = true;
+      }
     };
     client.batch = async (...args) => {
       await gate;
-      const result = await batch(...args);
-      window.historyReadCheck.finished = true;
-      return result;
+      return batch(...args);
     };
     client.view = async (...args) => {
       window.historyReadCheck.views++;
@@ -747,14 +761,14 @@ try {
   }
   // A failed draft flush keeps the visible dialog blocked; reopening can retry.
   await page.evaluate(async (id) => {
-    const client = (
-      await import("/src/backend/creationClient.ts")
-    ).creationClient(id);
-    const batch = client.batch.bind(client);
+    const { workspaceProjection } = await import("/src/backend/workspace.ts");
+    const projection = workspaceProjection(id);
+    const save = projection.save.bind(projection);
     window.restoreHistoryBatch = () => {
-      client.batch = batch;
+      projection.save = save;
     };
-    client.batch = async () => {
+    // A clean canvas does not call batch. The dialog awaits this flush.
+    projection.save = async () => {
       throw new Error("模拟草稿保存失败");
     };
   }, fixture.id);

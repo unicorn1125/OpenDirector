@@ -51,6 +51,8 @@ try {
     locale: "zh-CN",
     viewport: { width: 1500, height: 1000 },
   });
+  // Skip the first-run model setup welcome; it covers the canvas.
+  await page.addInitScript(() => localStorage.setItem("opendirector.modelSetup.v1", "dismissed"));
   page.setDefaultTimeout(15000);
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -438,19 +440,28 @@ try {
     "已显示",
     "未显示",
   ]);
-  assert.deepEqual(
-    await dialog
-      .locator(
-        ".cw-creation-asset-row:has(input) .cw-creation-asset-open small",
-      )
-      .allTextContents(),
-    [
-      "未在画布中显示·点击添加节点",
-      "已在画布中显示·点击定位节点",
-      "已在画布中显示·点击定位节点",
-      "已在画布中显示·点击定位节点",
-    ],
-  );
+  const assetLabels = [
+    "未在画布中显示·点击添加节点",
+    "已在画布中显示·点击定位节点",
+    "已在画布中显示·点击定位节点",
+    "已在画布中显示·点击定位节点",
+  ];
+  const readAssetLabels = () =>
+    dialog.locator(".cw-creation-asset-row").evaluateAll((rows) =>
+      rows.flatMap((row) => {
+        if (!row.querySelector("input")) return [];
+        const label = row.querySelector(".cw-creation-asset-open small");
+        return label ? [label.textContent] : [];
+      }),
+    );
+  let labels = [];
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    labels = await readAssetLabels();
+    if (JSON.stringify(labels) === JSON.stringify(assetLabels)) break;
+    await page.waitForTimeout(50);
+  }
+  assert.deepEqual(labels, assetLabels);
   await visibility.selectOption("visible");
   await page.waitForFunction(
     () => document.querySelectorAll(".cw-creation-asset-row").length === 5,

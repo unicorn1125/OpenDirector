@@ -4,8 +4,9 @@
  * in which lane (PR gate, nightly extended / extended-fixture / production /
  * perf) and under which requirements. This check fails when:
  * - a script exists on disk but is not registered (or vice versa);
- * - a "production" lane entry imports "/src/*.ts" in-page (vite preview
- *   cannot serve dev-only imports);
+ * - a "production" lane entry imports "/src" or "/tests" in-page (vite preview
+ *   cannot serve dev-only modules);
+ * - a page script forgets to dismiss the model-setup welcome;
  * - a script needing --assistant-fixture is assigned to a lane that runs on
  *   regular isolated services ("extended" / "perf");
  * - the manifest's "gate" lane disagrees with the browser scripts the
@@ -46,9 +47,13 @@ for (const entry of entries) {
 }
 
 const KNOWN_LANES = new Set(["gate", "extended", "extendedFixture", "production", "perf"]);
+// Static harness pages do not open the workspace, so they do not see the welcome dialog.
+const welcomeExempt = new Set(["assistant_activity.mjs"]);
 for (const entry of entries) {
   const text = entry.file === undefined ? "" : fs.readFileSync(path.join(browserDir, entry.file), "utf8");
   const importsSrc = text.includes('"/src/');
+  // vite preview serves dist only. In-page imports of source or test modules 404 there.
+  const needsDevServer = /["'`]\/(?:src|tests)\//.test(text);
   const needsFixture = /assistant-fixture|assistantFixture/.test(text);
   const lanes = entry.lanes ?? [];
   const unknown = lanes.filter((lane) => !KNOWN_LANES.has(lane));
@@ -58,10 +63,17 @@ for (const entry of entries) {
     continue;
   }
   if (!lanes.length) fail(`${entry.file}: non-helper entry must declare at least one lane`);
-  if (entry.previewSafe && importsSrc)
-    fail(`${entry.file}: marked previewSafe but imports "/src/*.ts"`);
-  if (lanes.includes("production") && !entry.previewSafe)
-    fail(`${entry.file}: production lane requires previewSafe (vite preview cannot serve "/src" imports)`);
+  if (entry.previewSafe && (importsSrc || needsDevServer))
+    fail(`${entry.file}: marked previewSafe but imports a dev-server module ("/src" or "/tests")`);
+  if (lanes.includes("production") && (!entry.previewSafe || needsDevServer))
+    fail(`${entry.file}: production lane requires previewSafe and cannot import "/src" or "/tests" modules`);
+  if (
+    !entry.helper &&
+    !welcomeExempt.has(entry.file) &&
+    text.includes("newPage(") &&
+    !text.includes("opendirector.modelSetup.v1")
+  )
+    fail(`${entry.file}: opens a browser page but does not dismiss the model-setup welcome`);
   if (needsFixture && !entry.fixture)
     fail(`${entry.file}: references the assistant fixture but is not marked fixture: true`);
   if (entry.fixture && !needsFixture)
@@ -86,6 +98,13 @@ for (const file of gateFromManifest)
 for (const file of gateFromWorkflow)
   if (!gateFromManifest.has(file))
     fail(`${gateSuitePath}/${gateWorkflowPath} invokes ${file} but the manifest "gate" lane does not include it`);
+
+const nightly = fs.readFileSync(".github/workflows/nightly.yml", "utf8");
+if (
+  !nightly.includes("CREATION_WEB_URL=http://127.0.0.1:5180") ||
+  !nightly.includes("CREATION_API_URL=http://127.0.0.1:8020")
+)
+  fail("nightly extendedFixture scripts must run against the fixture web (:5180) and API (:8020)");
 
 assert.equal(problems.length, 0, `browser manifest check failed:\n- ${problems.join("\n- ")}`);
 const count = (lane) => entries.filter((entry) => (entry.lanes ?? []).includes(lane)).length;

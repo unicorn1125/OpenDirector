@@ -71,6 +71,8 @@ async function setup(kind = "image") {
     locale: "zh-CN",
     viewport: { width: 1500, height: 1000 },
   });
+  // Skip the first-run model setup welcome; it covers the canvas.
+  await page.addInitScript(() => localStorage.setItem("opendirector.modelSetup.v1", "dismissed"));
   page.setDefaultTimeout(15000);
   page.on("pageerror", (e) => errors.push(e.message));
   const state = () => call(`/api/creation/projects/${id}`);

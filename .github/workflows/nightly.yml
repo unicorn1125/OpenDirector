@@ -218,7 +218,9 @@ jobs:
           )
           for entry in "${fixture_scripts[@]}"; do
             log="$RUNNER_TEMP/extended-logs/${entry%.mjs}.log"
-            if node "tests/browser/$entry" >"$log" 2>&1; then
+            # These scripts read CREATION_WEB_URL. Point them at the fixture
+            # Vite server; the workflow env still names the regular :5179 dev server.
+            if CREATION_WEB_URL=http://127.0.0.1:5180 CREATION_API_URL=http://127.0.0.1:8020 node "tests/browser/$entry" >"$log" 2>&1; then
               echo "pass $entry" >> extended-results.txt
             else
               echo "fail $entry" >> extended-results.txt
